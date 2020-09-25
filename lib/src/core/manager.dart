@@ -3,21 +3,27 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:dio_http_cache/src/core/config.dart';
 import 'package:dio_http_cache/src/core/obj.dart';
-import 'package:dio_http_cache/src/core/store.dart';
+import 'package:dio_http_cache/src/store/store_disk.dart';
+import 'package:dio_http_cache/src/store/store_impl.dart';
+import 'package:dio_http_cache/src/store/store_memory.dart';
 import 'package:sqflite/utils/utils.dart';
 
 class CacheManager {
   CacheConfig _config;
-  DiskCacheStore _diskCacheStore;
-  MemoryCacheStore _memoryCacheStore;
+  ICacheStore _diskCacheStore;
+  ICacheStore _memoryCacheStore;
   MD5 _md5;
   Utf8Encoder _utf8encoder;
 
   CacheManager(this._config) {
     _md5 = md5;
     _utf8encoder = const Utf8Encoder();
-    if (!_config.skipDiskCache) _diskCacheStore = DiskCacheStore(_config);
-    if (!_config.skipMemoryCache) _memoryCacheStore = MemoryCacheStore(_config);
+    if (!_config.skipDiskCache)
+      _diskCacheStore = _config.diskStore ??
+          DiskCacheStore(_config.databasePath, _config.databaseName,
+              _config.encrypt, _config.decrypt);
+    if (!_config.skipMemoryCache)
+      _memoryCacheStore = MemoryCacheStore(_config.maxMemoryCacheCount);
   }
 
   Future<CacheObj> _pullFromCache(String key, {String subKey}) async {

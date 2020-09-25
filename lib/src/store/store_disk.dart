@@ -1,29 +1,16 @@
-import 'dart:collection';
 import 'dart:io';
 
 import 'package:dio_http_cache/src/core/config.dart';
 import 'package:dio_http_cache/src/core/obj.dart';
+import 'package:dio_http_cache/src/store/store_impl.dart';
 import 'package:path/path.dart';
-import 'package:quiver/cache.dart';
 import 'package:sqflite/sqflite.dart';
 
-abstract class BaseCacheStore {
-  CacheConfig config;
-
-  BaseCacheStore(this.config);
-
-  Future<CacheObj> getCacheObj(String key, {String subKey});
-
-  Future<bool> setCacheObj(CacheObj obj);
-
-  Future<bool> delete(String key, {String subKey});
-
-  Future<bool> clearExpired();
-
-  Future<bool> clearAll();
-}
-
-class DiskCacheStore extends BaseCacheStore {
+class DiskCacheStore extends ICacheStore {
+  final String _databasePath;
+  final String _databaseName;
+  final Encrypt _encrypt;
+  final Decrypt _decrypt;
   final String _tableCacheObject = "cache_dio";
   final String _columnKey = "key";
   final String _columnSubKey = "subKey";
@@ -38,12 +25,12 @@ class DiskCacheStore extends BaseCacheStore {
 
   Future<Database> get _database async {
     if (null == _db) {
-      var path = config.databasePath;
+      var path = _databasePath;
       if (null == path || path.length <= 0) {
         path = await getDatabasesPath();
       }
       await Directory(path).create(recursive: true);
-      path = join(path, "${config.databaseName}.db");
+      path = join(path, "$_databaseName.db");
       _db = await openDatabase(path,
           version: _curDBVersion,
           onConfigure: (db) => _tryFixDbNoVersionBug(db, path),
@@ -116,7 +103,9 @@ class DiskCacheStore extends BaseCacheStore {
     });
   }
 
-  DiskCacheStore(CacheConfig config) : super(config);
+  DiskCacheStore(
+      this._databasePath, this._databaseName, this._encrypt, this._decrypt)
+      : super();
 
   @override
   Future<CacheObj> getCacheObj(String key, {String subKey}) async {
@@ -189,82 +178,17 @@ class DiskCacheStore extends BaseCacheStore {
 
   Future<List<int>> _decryptCacheStr(List<int> bytes) async {
     if (null == bytes) return null;
-    if (null != config.decrypt) {
-      bytes = await config.decrypt(bytes);
+    if (null != _decrypt) {
+      bytes = await _decrypt(bytes);
     }
     return bytes;
   }
 
   Future<List<int>> _encryptCacheStr(List<int> bytes) async {
     if (null == bytes) return null;
-    if (null != config.encrypt) {
-      bytes = await config.encrypt(bytes);
+    if (null != _encrypt) {
+      bytes = await _encrypt(bytes);
     }
     return bytes;
-  }
-}
-
-class MemoryCacheStore extends BaseCacheStore {
-  MapCache<String, CacheObj> _mapCache;
-  Map<String, List<String>> _keys;
-
-  MemoryCacheStore(CacheConfig config) : super(config) {
-    _initMap();
-  }
-
-  _initMap() {
-    _mapCache = MapCache.lru(maximumSize: config.maxMemoryCacheCount);
-    _keys = HashMap();
-  }
-
-  @override
-  Future<CacheObj> getCacheObj(String key, {String subKey = ""}) async =>
-      _mapCache.get("${key}_$subKey");
-
-  @override
-  Future<bool> setCacheObj(CacheObj obj) async {
-    _mapCache.set("${obj.key}_${obj.subKey}", obj);
-    _storeKey(obj);
-    return true;
-  }
-
-  @override
-  Future<bool> delete(String key, {String subKey}) async {
-//    _mapCache.invalidate("${key}_${subKey ?? ""}");
-    _removeKey(key, subKey: subKey).forEach((key) => _mapCache.invalidate(key));
-    return true;
-  }
-
-  @override
-  Future<bool> clearExpired() {
-    return clearAll();
-  }
-
-  @override
-  Future<bool> clearAll() async {
-    _mapCache = null;
-    _keys = null;
-    _initMap();
-    return true;
-  }
-
-  _storeKey(CacheObj obj) {
-    List<String> subKeyList = _keys[obj.key];
-    if (null == subKeyList) subKeyList = List();
-    subKeyList.add(obj.subKey ?? "");
-    _keys[obj.key] = subKeyList;
-  }
-
-  List<String> _removeKey(String key, {String subKey}) {
-    List<String> subKeyList = _keys[key];
-    if (null == subKeyList || subKeyList.length <= 0) return [];
-    if (null == subKey) {
-      _keys.remove(key);
-      return subKeyList.map((sKey) => "${key}_$sKey").toList();
-    } else {
-      subKeyList.remove(subKey);
-      _keys[key] = subKeyList;
-      return ["${key}_$subKey"];
-    }
   }
 }
