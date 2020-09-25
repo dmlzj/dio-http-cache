@@ -214,7 +214,22 @@ class DioCacheManager {
   String _getPrimaryKeyFromUri(Uri uri) => "${uri?.host}${uri?.path}";
 
   String _getSubKeyFromUri(Uri uri, {dynamic data}) =>
-      "${data?.toString()}_${uri?.query}";
+     _getSubKeyFromUriByCustom(uri, data: data);
+    // "${data?.toString()}_${uri?.query}";
+
+  String _getSubKeyFromUriByCustom(Uri uri, {dynamic data}) {
+    // 去除random timestamp sign
+    List query = uri.query.split('&');
+    List temp = [];
+    for (var item in query) {
+      if (item.toString().indexOf(RegExp('random|timestamp|sign')) == -1) {
+        temp.add(item);
+      }
+    }
+    String queryStr = temp.join('&');
+    // print(queryStr);
+    return "${data?.toString()}_${queryStr}";
+  }
 
   /// delete local cache by primaryKey and optional subKey
   Future<bool> delete(String primaryKey,
